@@ -1,3 +1,5 @@
+import fs from 'fs/promises'
+import path from 'path'
 import PokeAPI, {
   type Ability,
   type Pokemon,
@@ -22,8 +24,6 @@ import {
   TypeKey,
   TypeLabels,
 } from './models'
-import fs from 'fs/promises'
-import path from 'path'
 
 async function main() {
   const pokeapi = new PokeAPI()
