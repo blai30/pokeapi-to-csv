@@ -32,6 +32,7 @@ async function main() {
     limit: 386,
     offset: 0,
   })
+
   const species = await Promise.all(
     speciesList.results.map(async (result) => {
       const species = await pokeapi.getPokemonSpeciesByName(result.name)
@@ -66,7 +67,7 @@ async function main() {
   // console.log(speciesToVariantsMap)
   // console.log(variantToFormsMap)
 
-  // ability slug => ability name and description
+  // ability slug => { name, description }
   // e.g. 'battle-armor' => { 'Battle Armor', 'Battle Armor prevents the Pokémon from receiving critical hits.' }
   const abilitiesMap: Record<string, { name: string; description: string }> = {}
   for (const specie of species) {
@@ -246,11 +247,13 @@ async function main() {
       .join(',')
   )
   const csvContent = [csvHeaders, ...csvRows].join('\n')
-  const outputPath = path.join(__dirname, 'out', 'pokedeck-cms.csv')
+  const outputPath = path.join(__dirname, 'out', 'pokemon-cms.csv')
   await fs.mkdir(path.dirname(outputPath), { recursive: true })
   await fs.writeFile(outputPath, csvContent)
+
   console.log(`CSV file created at ${outputPath}`)
   console.log(`Total rows processed: ${rows.length}`)
+  console.log(`Elapsed time: ${process.uptime().toFixed(2)} seconds`)
 }
 
 await main()
