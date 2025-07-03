@@ -29,8 +29,8 @@ async function main() {
   const pokeapi = new PokeAPI()
 
   const speciesList = await pokeapi.getPokemonSpeciesList({
-    limit: 10,
-    offset: 380,
+    limit: 386,
+    offset: 0,
   })
   const species = await Promise.all(
     speciesList.results.map(async (result) => {
