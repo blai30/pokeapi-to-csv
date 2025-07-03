@@ -1,0 +1,19 @@
+{
+  "name": "pokeapi-to-csv",
+  "module": "index.ts",
+  "type": "module",
+  "private": true,
+  "scripts": {
+    "start": "bun run index.ts"
+  },
+  "devDependencies": {
+    "@biomejs/biome": "2.0.0",
+    "@types/bun": "latest"
+  },
+  "peerDependencies": {
+    "typescript": "^5.8.3"
+  },
+  "dependencies": {
+    "pokedex-promise-v2": "^4.2.1"
+  }
+}
