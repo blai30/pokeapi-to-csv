@@ -133,9 +133,11 @@ async function main() {
               ?.names.find((n) => n.language.name === 'en')?.name
       const row: Row = {
         dexId: specie.id,
+        speciesSlug: specie.name,
         slug: variant.name,
         species: specie.names.find((n) => n.language.name === 'en')?.name ?? '',
         variant: variantName ?? '',
+        isDefault: variant.is_default ?? false,
         genera:
           specie.genera.find((g) => g.language.name === 'en')?.genus ?? '',
         generation: GenerationNumber[specie.generation.name] ?? 0,

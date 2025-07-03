@@ -1,8 +1,10 @@
 export type Row = {
   dexId?: number | null
+  speciesSlug?: string | null
   slug?: string | null
   species?: string | null
   variant?: string | null
+  isDefault?: boolean | null
   genera?: string | null
   generation?: number | null
   type1?: string | null
