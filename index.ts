@@ -362,6 +362,7 @@ async function main() {
         slug: variant.name,
         species: getTranslation(specie.names, 'name'),
         variant: variantName ?? '',
+        isDefault: variant.is_default,
         genera: getTranslation(specie.genera, 'genus'),
         generation: GenerationNumber[specie.generation.name] ?? 0,
         type1: TypeLabels[variant.types[0]!.type.name as TypeKey],
