@@ -133,14 +133,22 @@ function csvEscape(val: unknown): string {
   return /[",\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s
 }
 
-// Utility: get English property value (explicit prop required)
-function getEnglishProp<
-  T extends { language: { name: string } },
+// Utility: get translation from resources
+export function getTranslation<
+  T extends {
+    language: {
+      name: string
+    }
+  },
   K extends keyof T,
->(arr: T[] | undefined, prop: K, fallback = ''): string {
-  if (!arr) return fallback
-  const found = arr.find((n) => n.language.name === 'en')
-  return found ? (found[prop] as string) : fallback
+>(resources: T[] | undefined, field: K, language: string = 'en') {
+  if (!resources) return undefined
+  const resource =
+    resources?.find((r) => r.language.name === language) ??
+    resources?.find((r) => r.language.name === 'en')
+
+  if (!resource) return undefined
+  return String(resource[field])
 }
 
 // Utility: batch map for objects (skip undefined results, pass index)
@@ -286,7 +294,7 @@ async function main() {
         )
         const abilityData = await getAbility(abilityName)
         return {
-          name: getEnglishProp(abilityData.names, 'name', abilityName),
+          name: getTranslation(abilityData.names, 'name') || abilityName,
           description:
             abilityData.effect_entries?.find(
               (e: { language: { name: string }; short_effect?: string }) =>
@@ -334,10 +342,16 @@ async function main() {
           : 'Ordinary'
     return variants.map((variant, variantIdx) => {
       const forms = variantToFormsMap[variant.name] || []
-      const variantName =
+      const form =
         variant.is_default || specie.name === variant.name
-          ? getEnglishProp(specie.names, 'name')
-          : getEnglishProp(forms.find((f) => f.is_default)?.names, 'name')
+          ? undefined
+          : forms.find((f) => f.name === variant.name) ||
+            forms.find((f) => f.is_default) ||
+            undefined
+      const variantName =
+        getTranslation(form?.names, 'name') ??
+        getTranslation(form?.form_names, 'name') ??
+        getTranslation(specie.names, 'name')!
       const imageId = specie.id.toString().padStart(4, '0')
       const row: Row = {
         dexId: specie.id,
@@ -346,9 +360,9 @@ async function main() {
           : `https://raw.githubusercontent.com/blai30/PokemonSpritesDump/refs/heads/main/sprites/sprite_${imageId}_${variant.name}_s0.webp`,
         speciesSlug: specie.name,
         slug: variant.name,
-        species: getEnglishProp(specie.names, 'name'),
+        species: getTranslation(specie.names, 'name'),
         variant: variantName ?? '',
-        genera: getEnglishProp(specie.genera, 'genus'),
+        genera: getTranslation(specie.genera, 'genus'),
         generation: GenerationNumber[specie.generation.name] ?? 0,
         type1: TypeLabels[variant.types[0]!.type.name as TypeKey],
         type2:
