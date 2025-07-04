@@ -1,5 +1,6 @@
 export type Row = {
   dexId?: number | null
+  imageUrl?: string | null
   speciesSlug?: string | null
   slug?: string | null
   species?: string | null
@@ -11,6 +12,12 @@ export type Row = {
   type2?: string | null
   height?: number | null
   weight?: number | null
+  ability1?: string | null
+  ability2?: string | null
+  abilityHidden?: string | null
+  ability1Description?: string | null
+  ability2Description?: string | null
+  abilityHiddenDescription?: string | null
   hp?: number | null
   attack?: number | null
   defense?: number | null
@@ -23,12 +30,6 @@ export type Row = {
   evSpecialAttack?: number | null
   evSpecialDefense?: number | null
   evSpeed?: number | null
-  ability1?: string | null
-  ability2?: string | null
-  abilityHidden?: string | null
-  ability1Description?: string | null
-  ability2Description?: string | null
-  abilityHiddenDescription?: string | null
   catchRate?: number | null
   baseHappiness?: number | null
   baseExp?: number | null

@@ -29,7 +29,7 @@ async function main() {
   const pokeapi = new PokeAPI()
 
   const speciesList = await pokeapi.getPokemonSpeciesList({
-    limit: 386,
+    limit: 1025,
     offset: 0,
   })
 
@@ -131,8 +131,12 @@ async function main() {
           : forms
               .find((f) => f.is_default)
               ?.names.find((n) => n.language.name === 'en')?.name
+      const imageId = specie.id.toString().padStart(4, '0')
       const row: Row = {
         dexId: specie.id,
+        imageUrl: variant.is_default
+          ? `https://raw.githubusercontent.com/blai30/PokemonSpritesDump/refs/heads/main/sprites/sprite_${imageId}_s0.webp`
+          : `https://raw.githubusercontent.com/blai30/PokemonSpritesDump/refs/heads/main/sprites/sprite_${imageId}_${variant.name}_s0.webp`,
         speciesSlug: specie.name,
         slug: variant.name,
         species: specie.names.find((n) => n.language.name === 'en')?.name ?? '',
@@ -146,20 +150,8 @@ async function main() {
           variant.types.length > 1
             ? TypeLabels[variant.types[1]?.type.name as TypeKey]
             : undefined,
-        weight: variant.weight / 10,
         height: variant.height / 10,
-        catchRate: specie.capture_rate,
-        baseHappiness: specie.base_happiness,
-        baseExp: variant.base_experience,
-        totalExp: totalExpMap[specie.growth_rate.name] ?? 0,
-        growthRate: GrowthRateLabels[specie.growth_rate.name as GrowthRateKey],
-        genderFemale:
-          specie.gender_rate >= 0 ? (specie.gender_rate / 8) * 100 : undefined,
-        genderMale:
-          specie.gender_rate >= 0
-            ? 100 - (specie.gender_rate / 8) * 100
-            : undefined,
-        genderless: specie.gender_rate === -1,
+        weight: variant.weight / 10,
         ability1:
           abilitiesMap[variant.abilities[0]!.ability.name]?.name ??
           variant.abilities[0]!.ability.name ??
@@ -221,6 +213,18 @@ async function main() {
             ?.effort ?? 0,
         evSpeed:
           variant.stats.find((s) => s.stat.name === StatKey.Speed)?.effort ?? 0,
+        catchRate: specie.capture_rate,
+        baseHappiness: specie.base_happiness,
+        baseExp: variant.base_experience,
+        totalExp: totalExpMap[specie.growth_rate.name] ?? 0,
+        growthRate: GrowthRateLabels[specie.growth_rate.name as GrowthRateKey],
+        genderMale:
+          specie.gender_rate >= 0
+            ? 100 - (specie.gender_rate / 8) * 100
+            : undefined,
+        genderFemale:
+          specie.gender_rate >= 0 ? (specie.gender_rate / 8) * 100 : undefined,
+        genderless: specie.gender_rate === -1,
         eggCycles: specie.hatch_counter,
         eggGroup1:
           EggGroupLabels[specie.egg_groups[0]?.name as EggGroupKey] ??
