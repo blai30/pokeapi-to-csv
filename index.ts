@@ -25,17 +25,95 @@ import {
   TypeLabels,
 } from './models'
 
-// Helper to batch async calls
+// Disk+memory cache utility
+class DiskMemoryCache<T> {
+  private mem: Map<string, T> = new Map()
+  public lastBatchStats: {
+    fromMemory: number
+    fromDisk: number
+    fromApi: number
+  } = { fromMemory: 0, fromDisk: 0, fromApi: 0 }
+  constructor(
+    private cacheDir: string,
+    private label: string
+  ) {}
+  private getPath(key: string) {
+    return path.join(this.cacheDir, encodeURIComponent(key) + '.json')
+  }
+  async get(
+    key: string
+  ): Promise<{ value: T | undefined; source: 'memory' | 'disk' | undefined }> {
+    if (this.mem.has(key)) {
+      this.lastBatchStats.fromMemory++
+      return { value: this.mem.get(key), source: 'memory' }
+    }
+    const file = this.getPath(key)
+    try {
+      const data = await fs.readFile(file, 'utf8')
+      const val = JSON.parse(data) as T
+      this.mem.set(key, val)
+      this.lastBatchStats.fromDisk++
+      return { value: val, source: 'disk' }
+    } catch {
+      return { value: undefined, source: undefined }
+    }
+  }
+  async set(key: string, value: T): Promise<void> {
+    this.mem.set(key, value)
+    const file = this.getPath(key)
+    await fs.mkdir(path.dirname(file), { recursive: true })
+    await fs.writeFile(file, JSON.stringify(value))
+  }
+  getLabel() {
+    return this.label
+  }
+  resetBatchStats() {
+    this.lastBatchStats = { fromMemory: 0, fromDisk: 0, fromApi: 0 }
+  }
+}
+
+// Wrap an async function with disk+memory cache, batch-aware
+function withCache<T, R>(
+  cache: DiskMemoryCache<R>,
+  fn: (key: T) => Promise<R>
+) {
+  return async (key: T): Promise<R> => {
+    const k = typeof key === 'string' ? key : JSON.stringify(key)
+    const { value, source } = await cache.get(k)
+    if (value !== undefined) return value
+    cache.lastBatchStats.fromApi++
+    const val = await fn(key)
+    await cache.set(k, val)
+    return val
+  }
+}
+
+// Helper to batch async calls (with batch status logging and cache stats, fully type-safe)
 async function batch<T, R>(
   items: T[],
   fn: (item: T) => Promise<R>,
   batchSize = 20,
-  delayMs = 0
+  delayMs = 0,
+  label?: string,
+  cache?: DiskMemoryCache<R>
 ): Promise<R[]> {
   const results: R[] = []
+  const total = items.length
   for (let i = 0; i < items.length; i += batchSize) {
+    if (cache) cache.resetBatchStats()
     const batchItems = items.slice(i, i + batchSize)
+    if (label) {
+      console.log(
+        `    ${label}: Batch ${Math.floor(i / batchSize) + 1} (${i + 1}-${Math.min(i + batchSize, total)}) / ${total}`
+      )
+    }
     results.push(...(await Promise.all(batchItems.map(fn))))
+    if (label && cache) {
+      const { fromMemory, fromDisk, fromApi } = cache.lastBatchStats
+      console.log(
+        `      [${cache.getLabel()}] memory: ${fromMemory}, disk: ${fromDisk}, api: ${fromApi}`
+      )
+    }
     if (delayMs && i + batchSize < items.length) {
       await new Promise((res) => setTimeout(res, delayMs))
     }
@@ -55,12 +133,11 @@ function csvEscape(val: unknown): string {
   return /[",\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s
 }
 
-// Utility: get English name or other property
-function getEnglishName<T extends { language: { name: string } }>(
-  arr: T[] | undefined,
-  fallback = '',
-  prop: keyof T = 'name' as keyof T
-) {
+// Utility: get English property value (explicit prop required)
+function getEnglishProp<
+  T extends { language: { name: string } },
+  K extends keyof T,
+>(arr: T[] | undefined, prop: K, fallback = ''): string {
   if (!arr) return fallback
   const found = arr.find((n) => n.language.name === 'en')
   return found ? (found[prop] as string) : fallback
@@ -90,6 +167,29 @@ async function batchMap<T, R>(
 
 async function main() {
   const pokeapi = new PokeAPI()
+  // Setup caches with correct types
+  const cacheRoot = path.join(__dirname, 'pokeapi-cache')
+  const speciesCache = new DiskMemoryCache<PokeAPI.PokemonSpecies>(
+    path.join(cacheRoot, 'species'),
+    'species'
+  )
+  const pokemonCache = new DiskMemoryCache<PokeAPI.Pokemon>(
+    path.join(cacheRoot, 'pokemon'),
+    'pokemon'
+  )
+  const formCache = new DiskMemoryCache<PokeAPI.PokemonForm>(
+    path.join(cacheRoot, 'form'),
+    'form'
+  )
+  const abilityCache = new DiskMemoryCache<PokeAPI.Ability>(
+    path.join(cacheRoot, 'ability'),
+    'ability'
+  )
+  const growthRateCache = new DiskMemoryCache<PokeAPI.GrowthRate>(
+    path.join(cacheRoot, 'growth-rate'),
+    'growth-rate'
+  )
+
   console.log('Fetching Pokémon species list...')
   const speciesList = await pokeapi.getPokemonSpeciesList({
     limit: 1025,
@@ -98,11 +198,17 @@ async function main() {
   console.log(`Fetched ${speciesList.results.length} species.`)
   // Batch fetch species details
   console.log('Fetching species details in batches...')
+  const getSpecies = withCache<{ name: string }, PokeAPI.PokemonSpecies>(
+    speciesCache,
+    (r) => pokeapi.getPokemonSpeciesByName(r.name)
+  )
   const species = await batch(
     speciesList.results,
-    (r) => pokeapi.getPokemonSpeciesByName(r.name),
+    getSpecies,
     20,
-    100
+    100,
+    'Species',
+    speciesCache
   )
   console.log('Fetched all species details.')
 
@@ -113,11 +219,17 @@ async function main() {
     species.map(async (specie, idx) => {
       if (idx % 50 === 0)
         console.log(`  Processing species ${idx + 1} / ${species.length}`)
+      const getPokemon = withCache<
+        { pokemon: { name: string } },
+        PokeAPI.Pokemon
+      >(pokemonCache, (v) => pokeapi.getPokemonByName(v.pokemon.name))
       speciesToVariantsMap[specie.name] = await batch(
         specie.varieties,
-        (v) => pokeapi.getPokemonByName(v.pokemon.name),
+        getPokemon,
         20,
-        100
+        100,
+        `Variants for ${specie.name}`,
+        pokemonCache
       )
     })
   )
@@ -133,11 +245,17 @@ async function main() {
     allVariants.map(async (variant, idx) => {
       if (idx % 100 === 0)
         console.log(`  Processing variant ${idx + 1} / ${allVariants.length}`)
+      const getForm = withCache<{ name: string }, PokeAPI.PokemonForm>(
+        formCache,
+        (f) => pokeapi.getPokemonFormByName(f.name)
+      )
       variantToFormsMap[variant.name] = await batch(
         variant.forms,
-        (f) => pokeapi.getPokemonFormByName(f.name),
+        getForm,
         20,
-        100
+        100,
+        `Forms for ${variant.name}`,
+        formCache
       )
     })
   )
@@ -162,12 +280,18 @@ async function main() {
           console.log(
             `  Processing ability ${idx + 1} / ${allAbilityNames.length}`
           )
-        const abilityData = await pokeapi.getAbilityByName(abilityName)
+        const getAbility = withCache<string, PokeAPI.Ability>(
+          abilityCache,
+          (name) => pokeapi.getAbilityByName(name)
+        )
+        const abilityData = await getAbility(abilityName)
         return {
-          name: getEnglishName(abilityData.names, abilityName),
+          name: getEnglishProp(abilityData.names, 'name', abilityName),
           description:
-            abilityData.effect_entries?.find((e) => e.language.name === 'en')
-              ?.short_effect ?? '',
+            abilityData.effect_entries?.find(
+              (e: { language: { name: string }; short_effect?: string }) =>
+                e.language.name === 'en'
+            )?.short_effect ?? '',
         }
       },
       20,
@@ -185,7 +309,11 @@ async function main() {
         console.log(
           `  Processing growth rate ${idx + 1} / ${growthRatesList.results.length}`
         )
-      const growthRate = await pokeapi.getGrowthRateByName(name)
+      const getGrowthRate = withCache<string, PokeAPI.GrowthRate>(
+        growthRateCache,
+        (n) => pokeapi.getGrowthRateByName(n)
+      )
+      const growthRate = await getGrowthRate(name)
       return growthRate.levels[99]?.experience ?? 0
     },
     10,
@@ -205,13 +333,11 @@ async function main() {
           ? 'Mythical'
           : 'Ordinary'
     return variants.map((variant, variantIdx) => {
-      if (variantIdx === 0)
-        console.log(`  Processing variants for species ${specie.name}`)
       const forms = variantToFormsMap[variant.name] || []
       const variantName =
         variant.is_default || specie.name === variant.name
-          ? getEnglishName(specie.names, '')
-          : getEnglishName(forms.find((f) => f.is_default)?.names, '')
+          ? getEnglishProp(specie.names, 'name')
+          : getEnglishProp(forms.find((f) => f.is_default)?.names, 'name')
       const imageId = specie.id.toString().padStart(4, '0')
       const row: Row = {
         dexId: specie.id,
@@ -220,10 +346,9 @@ async function main() {
           : `https://raw.githubusercontent.com/blai30/PokemonSpritesDump/refs/heads/main/sprites/sprite_${imageId}_${variant.name}_s0.webp`,
         speciesSlug: specie.name,
         slug: variant.name,
-        species: getEnglishName(specie.names, ''),
+        species: getEnglishProp(specie.names, 'name'),
         variant: variantName ?? '',
-        isDefault: variant.is_default ?? false,
-        genera: getEnglishName(specie.genera, '', 'genus'),
+        genera: getEnglishProp(specie.genera, 'genus'),
         generation: GenerationNumber[specie.generation.name] ?? 0,
         type1: TypeLabels[variant.types[0]!.type.name as TypeKey],
         type2:
